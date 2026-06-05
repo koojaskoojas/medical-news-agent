@@ -28,7 +28,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          OPENROUTER_MODEL: openrouter/auto
+          OPENROUTER_MODEL: google/gemma-4-31b-it:free
           LOG_LEVEL: info
           MAX_ARTICLES_PER_SOURCE: "50"
           CRAWL_TIMEOUT: "15000"
