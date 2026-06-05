@@ -4,13 +4,14 @@ import { logger } from '@/lib/logger';
 
 const parser = new Parser({ timeout: 15000, maxRedirects: 5 });
 
+// Reuters 공개 RSS 2023년 폐지 → STAT News + BBC Health로 대체
 const FEEDS = [
-  'https://feeds.reuters.com/reuters/healthNews',
-  'https://feeds.reuters.com/reuters/scienceNews',
+  'https://www.statnews.com/feed/',
+  'https://feeds.bbci.co.uk/news/health/rss.xml',
 ];
 
 export class ReutersSource extends BaseSource {
-  readonly name = 'Reuters';
+  readonly name = 'STAT News';
 
   async fetch(): Promise<RawArticle[]> {
     const articles: RawArticle[] = [];
@@ -29,7 +30,7 @@ export class ReutersSource extends BaseSource {
           });
         }
       } catch (e) {
-        logger.warn(`[Reuters] 피드 오류 ${feedUrl}: ${e}`);
+        logger.warn(`[STAT News] 피드 오류 ${feedUrl}: ${e}`);
       }
     }
     return articles;

@@ -4,10 +4,10 @@ import { logger } from '@/lib/logger';
 
 const parser = new Parser({ timeout: 15000, maxRedirects: 5 });
 
+// CDC Emerging Infectious Diseases Journal + CDC 뉴스 (구 RSS 피드 대부분 폐지됨)
 const FEEDS = [
-  'https://tools.cdc.gov/api/v2/resources/media/403372.rss',
-  'https://emergency.cdc.gov/han/rss.asp',
-  'https://www.cdc.gov/mmwr/feeds/rss/wk.xml',
+  'https://wwwnc.cdc.gov/eid/rss/ahead-of-print.xml',
+  'https://news.google.com/rss/search?q=CDC+disease+outbreak+health+alert&hl=en&gl=US&ceid=US:en',
 ];
 
 export class CDCSource extends BaseSource {

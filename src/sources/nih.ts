@@ -4,13 +4,14 @@ import { logger } from '@/lib/logger';
 
 const parser = new Parser({ timeout: 15000, maxRedirects: 5 });
 
+// NIH 공식 RSS는 Cloudflare가 봇 차단 → ScienceDaily로 대체 (NIH 연구 집중 보도)
 const FEEDS = [
-  'https://www.nih.gov/news-events/news-releases/feed',
-  'https://www.niaid.nih.gov/news-events/news-releases/feed',
+  'https://www.sciencedaily.com/rss/health_medicine.xml',
+  'https://www.sciencedaily.com/rss/top/health.xml',
 ];
 
 export class NIHSource extends BaseSource {
-  readonly name = 'NIH';
+  readonly name = 'ScienceDaily';
 
   async fetch(): Promise<RawArticle[]> {
     const articles: RawArticle[] = [];
@@ -29,7 +30,7 @@ export class NIHSource extends BaseSource {
           });
         }
       } catch (e) {
-        logger.warn(`[NIH] 피드 오류 ${feedUrl}: ${e}`);
+        logger.warn(`[ScienceDaily] 피드 오류 ${feedUrl}: ${e}`);
       }
     }
     return articles;
