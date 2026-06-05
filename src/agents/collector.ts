@@ -1,15 +1,16 @@
 import { ALL_SOURCES } from '@/sources';
 import type { RawArticle } from '@/sources';
 import { crawlArticle } from './crawler';
-import { summarize } from './summarizer';
-import { classify } from './classifier';
+import { analyzeArticle } from './analyzer';
 import { computeHash } from '@/lib/hash';
 import { getSupabaseClient } from '@/lib/supabase';
 import { logger } from '@/lib/logger';
 import type { NewsArticleInsert, CollectionResult } from '@/types';
 
 const MAX_PER_SOURCE = parseInt(process.env.MAX_ARTICLES_PER_SOURCE ?? '50');
-const CONCURRENCY = 5;
+// 무료 LLM 분당 16회 제한 → 동시 3개 + 배치 간 12초 대기 = 분당 ~15건
+const CONCURRENCY = 3;
+const BATCH_DELAY_MS = 12000;
 
 // ── Source fetching ───────────────────────────────────────────────────────────
 
@@ -51,17 +52,20 @@ function deduplicate(articles: RawArticle[]): Array<RawArticle & { _hash: string
   return unique;
 }
 
-// ── DB duplicate check ────────────────────────────────────────────────────────
+// ── DB duplicate check (요약 없는 기사는 재처리 허용) ─────────────────────────
 
 async function isStored(url: string): Promise<boolean> {
   try {
     const db = getSupabaseClient();
     const { data } = await db
       .from('news_articles')
-      .select('id')
+      .select('id, summary')
       .eq('url', url)
       .limit(1);
-    return (data?.length ?? 0) > 0;
+    if (!data || data.length === 0) return false;
+    // 요약이 있는 기사만 "이미 처리됨"으로 간주
+    return typeof (data[0] as Record<string, unknown>).summary === 'string' &&
+      ((data[0] as Record<string, unknown>).summary as string).length > 10;
   } catch {
     return false;
   }
@@ -78,17 +82,10 @@ async function processArticle(
   }
 
   const content = await crawlArticle(raw.url);
-  const textForLLM = content || raw.summary || '';
+  const textForLLM = content || raw.summary || raw.title;
 
-  const [llmResult, clsResult] = await Promise.all([
-    summarize(raw.title, textForLLM, raw.language),
-    classify(raw.title, raw.summary ?? '', []),
-  ]);
-
-  // 요약 결과로 재분류 (diseases 정보 포함)
-  const finalCls = llmResult.diseases.length > 0
-    ? await classify(raw.title, llmResult.summary, llmResult.diseases)
-    : clsResult;
+  // 요약 + 분류를 단일 LLM 호출로 처리
+  const analysis = await analyzeArticle(textForLLM ? `${raw.title}\n\n${textForLLM}` : raw.title, '', raw.language);
 
   const record: NewsArticleInsert = {
     source: raw.source,
@@ -96,11 +93,11 @@ async function processArticle(
     url: raw.url,
     published_at: raw.published_at?.toISOString() ?? null,
     content: content || null,
-    summary: llmResult.summary || null,
-    keywords: llmResult.keywords,
-    diseases: llmResult.diseases,
-    risk_level: finalCls.risk_level,
-    category: finalCls.category,
+    summary: analysis.summary || null,
+    keywords: analysis.keywords,
+    diseases: analysis.diseases,
+    risk_level: analysis.risk_level,
+    category: analysis.category,
     language: raw.language,
     is_processed: true,
     content_hash: computeHash(raw.title, content),
@@ -114,8 +111,8 @@ async function processArticle(
 
     if (error) throw error;
 
-    const riskEmoji = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢', unknown: '⚪' }[finalCls.risk_level];
-    logger.info(`[Collector] ${riskEmoji} [${finalCls.risk_level}][${finalCls.category}] ${raw.title.slice(0, 55)}`);
+    const riskEmoji = { critical: '🔴', high: '🟠', medium: '🟡', low: '🟢', unknown: '⚪' }[analysis.risk_level];
+    logger.info(`[Collector] ${riskEmoji} [${analysis.risk_level}][${analysis.category}] ${raw.title.slice(0, 55)}`);
     return true;
   } catch (e) {
     logger.error(`[Collector] DB 저장 오류: ${e}`);
@@ -123,7 +120,7 @@ async function processArticle(
   }
 }
 
-// ── Concurrency helper ────────────────────────────────────────────────────────
+// ── Concurrency helper (배치 간 지연 포함) ─────────────────────────────────────
 
 async function runConcurrent<T, R>(
   items: T[],
@@ -136,6 +133,10 @@ async function runConcurrent<T, R>(
     const batchResults = await Promise.allSettled(batch.map(fn));
     for (const r of batchResults) {
       if (r.status === 'fulfilled') results.push(r.value);
+    }
+    // 마지막 배치가 아니면 대기 (rate limit 준수)
+    if (i + concurrency < items.length) {
+      await new Promise((r) => setTimeout(r, BATCH_DELAY_MS));
     }
   }
   return results;
