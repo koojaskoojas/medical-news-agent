@@ -2,8 +2,8 @@ name: Daily Medical News Collection
 
 on:
   schedule:
-    - cron: "0 6 * * *"   # 매일 UTC 06:00 (KST 15:00)
-  workflow_dispatch:        # GitHub UI에서 수동 실행 가능
+    - cron: "0 6 * * *"
+  workflow_dispatch:
 
 jobs:
   collect:
