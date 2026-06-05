@@ -1,0 +1,40 @@
+name: Daily Medical News Collection
+
+on:
+  schedule:
+    - cron: "0 6 * * *"   # 매일 UTC 06:00 (KST 15:00)
+  workflow_dispatch:        # GitHub UI에서 수동 실행 가능
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run collection pipeline
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: openrouter/auto
+          LOG_LEVEL: info
+          MAX_ARTICLES_PER_SOURCE: "50"
+          CRAWL_TIMEOUT: "15000"
+          LLM_TIMEOUT: "30000"
+        run: npm run collect
+
+      - name: Notify on failure
+        if: failure()
+        run: echo "::error::Medical news collection failed. Check logs above."
